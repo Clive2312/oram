@@ -10,6 +10,22 @@
 #include <random>
 #include <map>
 
+// Helper: Generate random data for testing
+std::vector<oram::Byte> generate_random_data(size_t size, std::mt19937& rng) {
+    std::uniform_int_distribution<int> dist(0, 255);
+    std::vector<oram::Byte> data(size);
+    for (auto& byte : data) {
+        byte = static_cast<oram::Byte>(dist(rng));
+    }
+    return data;
+}
+
+// Helper: Generate random data with seed (deterministic)
+std::vector<oram::Byte> generate_random_data_seeded(size_t size, uint64_t seed) {
+    std::mt19937 rng(seed);
+    return generate_random_data(size, rng);
+}
+
 // Reference implementation using unordered_map for correctness comparison
 class ReferenceOram {
 public:
@@ -45,8 +61,8 @@ void test_single_block_read_write() {
 
     oram.init(config);
 
-    // Write block 0
-    std::vector<oram::Byte> data(64, 0xAA);
+    // Write block 0 with random data
+    auto data = generate_random_data_seeded(64, 99999);
     oram.write(0, data);
 
     // Read it back
@@ -70,17 +86,19 @@ void test_multiple_blocks() {
 
     oram.init(config);
 
-    // Write multiple blocks with different patterns
+    // Write multiple blocks with different random data
+    std::vector<std::vector<oram::Byte>> written_data;
     for (oram::BlockId i = 0; i < 8; i++) {
-        std::vector<oram::Byte> data(32, static_cast<oram::Byte>(i));
+        auto data = generate_random_data_seeded(32, 1000 + i);
+        written_data.push_back(data);
         oram.write(i, data);
     }
 
-    // Read them back
+    // Read them back and verify
     for (oram::BlockId i = 0; i < 8; i++) {
         auto data = oram.read(i);
         assert(data.size() == 32);
-        assert(data[0] == static_cast<oram::Byte>(i));
+        assert(data == written_data[i]);
     }
 
     std::cout << "  PASSED" << std::endl;
@@ -123,7 +141,7 @@ void test_overwrite() {
     oram.init(config);
 
     // Write block 3
-    std::vector<oram::Byte> data1(64, 0x11);
+    auto data1 = generate_random_data_seeded(64, 2000);
     oram.write(3, data1);
 
     // Read it
@@ -131,7 +149,7 @@ void test_overwrite() {
     assert(read1 == data1);
 
     // Overwrite with new data
-    std::vector<oram::Byte> data2(64, 0x22);
+    auto data2 = generate_random_data_seeded(64, 2001);
     oram.write(3, data2);
 
     // Read again
@@ -154,7 +172,7 @@ void test_repeated_reads() {
     oram.init(config);
 
     // Write a block
-    std::vector<oram::Byte> data(32, 0x42);
+    auto data = generate_random_data_seeded(32, 3000);
     oram.write(7, data);
 
     // Read it multiple times
@@ -179,7 +197,7 @@ void test_access_api() {
     oram.init(config);
 
     // Write using access
-    std::vector<oram::Byte> write_data(64, 0x55);
+    auto write_data = generate_random_data_seeded(64, 4000);
     auto old_data = oram.access(2, write_data);
     // Should return zeros since block was never written
     for (auto byte : old_data) {
@@ -260,7 +278,7 @@ void test_small_instance_invariants() {
 
     // Write some blocks
     for (oram::BlockId i = 0; i < 4; i++) {
-        std::vector<oram::Byte> data(32, static_cast<oram::Byte>(i * 10));
+        auto data = generate_random_data_seeded(32, 5000 + i);
         oram.write(i, data);
         oram.check_invariants();  // Check after each write
     }
@@ -273,7 +291,7 @@ void test_small_instance_invariants() {
 
     // More writes
     for (oram::BlockId i = 4; i < 8; i++) {
-        std::vector<oram::Byte> data(32, static_cast<oram::Byte>(i * 10));
+        auto data = generate_random_data_seeded(32, 5000 + i);
         oram.write(i, data);
         oram.check_invariants();
     }
@@ -298,7 +316,7 @@ void test_stash_monitoring() {
     // Perform some operations and monitor stash
     size_t max_stash = 0;
     for (int i = 0; i < 20; i++) {
-        std::vector<oram::Byte> data(64, static_cast<oram::Byte>(i));
+        auto data = generate_random_data_seeded(64, 6000 + i);
         oram.write(i % 16, data);
         size_t stash = oram.stash_size();
         max_stash = std::max(max_stash, stash);
@@ -330,14 +348,16 @@ void test_different_z_values() {
         oram.init(config);
 
         // Write and read some blocks
+        std::vector<std::vector<oram::Byte>> written_data;
         for (oram::BlockId i = 0; i < 8; i++) {
-            std::vector<oram::Byte> data(32, static_cast<oram::Byte>(i + z));
+            auto data = generate_random_data_seeded(32, 7000 + z * 100 + i);
+            written_data.push_back(data);
             oram.write(i, data);
         }
 
         for (oram::BlockId i = 0; i < 8; i++) {
             auto data = oram.read(i);
-            assert(data[0] == static_cast<oram::Byte>(i + z));
+            assert(data == written_data[i]);
         }
 
         oram.check_invariants();

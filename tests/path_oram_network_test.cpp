@@ -13,6 +13,22 @@
 #include <map>
 #include <random>
 
+// Helper: Generate random data for testing
+std::vector<oram::Byte> generate_random_data(size_t size, std::mt19937& rng) {
+    std::uniform_int_distribution<int> dist(0, 255);
+    std::vector<oram::Byte> data(size);
+    for (auto& byte : data) {
+        byte = static_cast<oram::Byte>(dist(rng));
+    }
+    return data;
+}
+
+// Helper: Generate random data with seed (deterministic)
+std::vector<oram::Byte> generate_random_data_seeded(size_t size, uint64_t seed) {
+    std::mt19937 rng(seed);
+    return generate_random_data(size, rng);
+}
+
 void run_server(int port, size_t num_buckets, size_t bucket_size,
                 const oram::AeadKey& key, size_t block_size, size_t Z) {
     std::cout << "[Server] Starting on port " << port << std::endl;
@@ -103,8 +119,10 @@ void test_network_mode() {
 
         // Test 1: Write some blocks
         std::cout << "    Writing blocks..." << std::endl;
+        std::vector<std::vector<oram::Byte>> written_data;
         for (oram::BlockId i = 0; i < 8; i++) {
-            std::vector<oram::Byte> data(block_size, static_cast<oram::Byte>(i * 10));
+            auto data = generate_random_data_seeded(block_size, 8000 + i);
+            written_data.push_back(data);
             oram.write(i, data);
         }
 
@@ -113,12 +131,12 @@ void test_network_mode() {
         for (oram::BlockId i = 0; i < 8; i++) {
             auto data = oram.read(i);
             assert(data.size() == block_size);
-            assert(data[0] == static_cast<oram::Byte>(i * 10));
+            assert(data == written_data[i]);
         }
 
         // Test 3: Overwrite
         std::cout << "    Overwriting blocks..." << std::endl;
-        std::vector<oram::Byte> new_data(block_size, 0xAA);
+        auto new_data = generate_random_data_seeded(block_size, 9000);
         oram.write(3, new_data);
         auto read_data = oram.read(3);
         assert(read_data == new_data);
