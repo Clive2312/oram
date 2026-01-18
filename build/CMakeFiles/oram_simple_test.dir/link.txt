@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/oram_simple_test.dir/tests/simple_test.cpp.o -o oram_simple_test  liboram.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so 

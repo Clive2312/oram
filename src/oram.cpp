@@ -2,7 +2,7 @@
 
 namespace oram {
 
-std::vector<std::vector<Byte>> Oram::server_read_path(LeafId leaf_id) {
+std::vector<std::vector<Byte>> Oram::server_read_path(LeafId leaf_id) const {
     if (local_server_) {
         return local_server_->read_path(leaf_id, params_.tree_depth);
     } else if (remote_client_) {
@@ -12,7 +12,7 @@ std::vector<std::vector<Byte>> Oram::server_read_path(LeafId leaf_id) {
     }
 }
 
-void Oram::server_write_path(LeafId leaf_id, const std::vector<std::vector<Byte>>& buckets) {
+void Oram::server_write_path(LeafId leaf_id, const std::vector<std::vector<Byte>>& buckets) const {
     if (local_server_) {
         local_server_->write_path(leaf_id, params_.tree_depth, buckets);
     } else if (remote_client_) {
@@ -22,7 +22,7 @@ void Oram::server_write_path(LeafId leaf_id, const std::vector<std::vector<Byte>
     }
 }
 
-std::vector<Byte> Oram::server_read_bucket(NodeId node_id) {
+std::vector<Byte> Oram::server_read_bucket(NodeId node_id) const {
     if (local_server_) {
         return local_server_->read_bucket(node_id);
     } else if (remote_client_) {
@@ -32,7 +32,7 @@ std::vector<Byte> Oram::server_read_bucket(NodeId node_id) {
     }
 }
 
-void Oram::server_write_bucket(NodeId node_id, std::span<const Byte> data) {
+void Oram::server_write_bucket(NodeId node_id, std::span<const Byte> data) const {
     if (local_server_) {
         local_server_->write_bucket(node_id, data);
     } else if (remote_client_) {

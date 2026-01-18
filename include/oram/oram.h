@@ -197,22 +197,22 @@ protected:
     /**
      * Read buckets from server (handles local vs remote).
      */
-    std::vector<std::vector<Byte>> server_read_path(LeafId leaf_id);
+    std::vector<std::vector<Byte>> server_read_path(LeafId leaf_id) const;
 
     /**
      * Write buckets to server (handles local vs remote).
      */
-    void server_write_path(LeafId leaf_id, const std::vector<std::vector<Byte>>& buckets);
+    void server_write_path(LeafId leaf_id, const std::vector<std::vector<Byte>>& buckets) const;
 
     /**
      * Read a single bucket from server.
      */
-    std::vector<Byte> server_read_bucket(NodeId node_id);
+    std::vector<Byte> server_read_bucket(NodeId node_id) const;
 
     /**
      * Write a single bucket to server.
      */
-    void server_write_bucket(NodeId node_id, std::span<const Byte> data);
+    void server_write_bucket(NodeId node_id, std::span<const Byte> data) const;
 
     /**
      * Generate initial encrypted bucket (all dummies).

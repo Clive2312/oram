@@ -102,16 +102,18 @@ private:
     void read_path_into_stash(LeafId leaf_id);
 
     /**
-     * Write back path with greedy deep-first eviction.
+     * Evict path with greedy deep-first eviction.
      *
      * For each level from leaf to root:
      * - Find stash blocks that can be placed at this level
      * - Select up to Z blocks
      * - Write encrypted bucket with selected blocks + dummies
      *
-     * @param leaf_id The leaf of the path being written
+     * This is the standard "evict" operation from Path ORAM literature.
+     *
+     * @param leaf_id The leaf of the path being evicted
      */
-    void write_back_path(LeafId leaf_id);
+    void evict_path(LeafId leaf_id);
 
     /**
      * Select blocks from stash that can be placed at a given node.

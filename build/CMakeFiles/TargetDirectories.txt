@@ -1,8 +1,0 @@
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/oram.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/oram_simple_test.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/edit_cache.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/rebuild_cache.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/list_install_components.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/install.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/install/local.dir
-/home/clive/proj/oram_claude/oram/build/CMakeFiles/install/strip.dir

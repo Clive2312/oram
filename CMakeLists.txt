@@ -66,3 +66,40 @@ endif()
 # Simple test executable for manual verification
 add_executable(oram_simple_test tests/simple_test.cpp)
 target_link_libraries(oram_simple_test oram)
+
+# Path ORAM integration test
+add_executable(path_oram_test tests/path_oram_test.cpp)
+target_link_libraries(path_oram_test oram)
+
+# Path ORAM network test (client-server)
+add_executable(path_oram_network_test tests/path_oram_network_test.cpp)
+target_link_libraries(path_oram_network_test oram)
+
+# =============================================================================
+# Clean targets
+# =============================================================================
+
+# Mark additional files for cleaning
+set_directory_properties(PROPERTIES
+    ADDITIONAL_CLEAN_FILES "${CMAKE_BINARY_DIR}/CMakeCache.txt;${CMAKE_BINARY_DIR}/CMakeFiles"
+)
+
+# Custom target to clean everything including CMake cache
+add_custom_target(distclean
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/CMakeFiles
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/CMakeCache.txt
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/cmake_install.cmake
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/Makefile
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/*.a
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/oram_simple_test
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/path_oram_test
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_BINARY_DIR}/path_oram_network_test
+    COMMENT "Removing all build files and CMake cache"
+)
+
+# Custom target to rebuild from scratch
+add_custom_target(rebuild
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target clean
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
+    COMMENT "Clean and rebuild all targets"
+)
