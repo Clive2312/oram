@@ -101,6 +101,25 @@ public:
                        const std::vector<std::vector<Byte>>& buckets);
 
     /**
+     * Read a single slot from a bucket (for Ring ORAM).
+     *
+     * @param node_id The bucket's node ID
+     * @param slot_index The slot index within the bucket
+     * @param encrypted_slot_size The size of an encrypted slot
+     * @return The encrypted slot data
+     */
+    std::vector<Byte> read_slot(NodeId node_id, size_t slot_index, size_t encrypted_slot_size) const;
+
+    /**
+     * Write a single slot to a bucket (for Ring ORAM).
+     *
+     * @param node_id The bucket's node ID
+     * @param slot_index The slot index within the bucket
+     * @param data The encrypted slot data
+     */
+    void write_slot(NodeId node_id, size_t slot_index, std::span<const Byte> data);
+
+    /**
      * Run the server network loop.
      * Listens for client connections and handles requests.
      *
@@ -142,6 +161,8 @@ private:
     void handle_write_path(NetIO& io, std::span<const Byte> payload);
     void handle_read_buckets(NetIO& io, std::span<const Byte> payload);
     void handle_write_buckets(NetIO& io, std::span<const Byte> payload);
+    void handle_read_slot(NetIO& io, std::span<const Byte> payload);
+    void handle_write_slot(NetIO& io, std::span<const Byte> payload);
     void handle_init(NetIO& io, std::span<const Byte> payload);
 
     // Send message helper
@@ -223,6 +244,25 @@ public:
      */
     void write_buckets(const std::vector<NodeId>& node_ids,
                        const std::vector<std::vector<Byte>>& buckets);
+
+    /**
+     * Read a single slot from a bucket (for Ring ORAM).
+     *
+     * @param node_id The bucket's node ID
+     * @param slot_index The slot index within the bucket
+     * @param encrypted_slot_size The size of an encrypted slot
+     * @return The encrypted slot data
+     */
+    std::vector<Byte> read_slot(NodeId node_id, size_t slot_index, size_t encrypted_slot_size);
+
+    /**
+     * Write a single slot to a bucket (for Ring ORAM).
+     *
+     * @param node_id The bucket's node ID
+     * @param slot_index The slot index within the bucket
+     * @param data The encrypted slot data
+     */
+    void write_slot(NodeId node_id, size_t slot_index, std::span<const Byte> data);
 
 private:
     NetIO& io_;

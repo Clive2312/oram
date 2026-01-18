@@ -70,6 +70,46 @@ public:
      */
     size_t block_size() const { return block_size_; }
 
+    /**
+     * Encode a single slot (block) with encryption.
+     *
+     * @param block The block to encode
+     * @return Encrypted slot data
+     */
+    std::vector<Byte> encode_slot(const Block& block);
+
+    /**
+     * Decode a single encrypted slot.
+     *
+     * @param ciphertext The encrypted slot data
+     * @return Decrypted block
+     */
+    Block decode_slot(std::span<const Byte> ciphertext);
+
+    /**
+     * Get the encrypted slot size (for individual slot encryption).
+     *
+     * @return Size of encrypted slot in bytes
+     */
+    size_t encrypted_slot_size() const;
+
+    /**
+     * Encode bucket with per-slot encryption (for Ring ORAM).
+     * Each slot is encrypted individually.
+     *
+     * @param bucket The plaintext bucket to encode
+     * @return Encrypted bucket data (concatenated encrypted slots)
+     */
+    std::vector<Byte> encode_bucket_slotwise(const Bucket& bucket);
+
+    /**
+     * Decode bucket with per-slot encryption.
+     *
+     * @param ciphertext The encrypted bucket data
+     * @return Decrypted bucket
+     */
+    Bucket decode_bucket_slotwise(std::span<const Byte> ciphertext);
+
 private:
     Aead& aead_;
     size_t block_size_;
@@ -83,6 +123,12 @@ private:
 
     // Deserialize a bucket from a byte buffer
     Bucket deserialize_bucket(std::span<const Byte> in);
+
+    // Serialize a single slot/block to a byte buffer
+    void serialize_slot(const Block& block, std::span<Byte> out);
+
+    // Deserialize a single slot/block from a byte buffer
+    Block deserialize_slot(std::span<const Byte> in);
 };
 
 } // namespace oram

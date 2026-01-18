@@ -17,11 +17,14 @@ enum class MessageType : uint8_t {
     ReadBuckets = 0x05,     // Request to read multiple specific buckets
     WriteBuckets = 0x06,    // Request to write multiple specific buckets
     Init = 0x07,            // Initialize server storage
+    ReadSlot = 0x08,        // Request to read a single slot from a bucket (Ring ORAM)
+    WriteSlot = 0x09,       // Request to write a single slot to a bucket (Ring ORAM)
 
     // Server -> Client
     BucketData = 0x10,      // Response containing bucket data
     PathData = 0x11,        // Response containing path data
     BucketsData = 0x12,     // Response containing multiple buckets
+    SlotData = 0x14,        // Response containing slot data
     Ack = 0x13,             // Acknowledgment of write operation
     Error = 0xFF            // Error response
 };
@@ -285,6 +288,77 @@ struct BucketsDataResponse {
         std::memcpy(&r.bucket_size, in.data() + sizeof(r.count), sizeof(r.bucket_size));
         return r;
     }
+};
+
+/**
+ * Request to read a single slot from a bucket.
+ */
+struct ReadSlotRequest {
+    NodeId node_id;
+    uint32_t slot_index;
+    uint32_t encrypted_slot_size;
+
+    static constexpr size_t SIZE = sizeof(NodeId) + sizeof(uint32_t) * 2;
+
+    void serialize(std::span<Byte> out) const {
+        assert(out.size() >= SIZE);
+        size_t offset = 0;
+        std::memcpy(out.data() + offset, &node_id, sizeof(node_id));
+        offset += sizeof(node_id);
+        std::memcpy(out.data() + offset, &slot_index, sizeof(slot_index));
+        offset += sizeof(slot_index);
+        std::memcpy(out.data() + offset, &encrypted_slot_size, sizeof(encrypted_slot_size));
+    }
+
+    static ReadSlotRequest deserialize(std::span<const Byte> in) {
+        assert(in.size() >= SIZE);
+        ReadSlotRequest r;
+        size_t offset = 0;
+        std::memcpy(&r.node_id, in.data() + offset, sizeof(r.node_id));
+        offset += sizeof(r.node_id);
+        std::memcpy(&r.slot_index, in.data() + offset, sizeof(r.slot_index));
+        offset += sizeof(r.slot_index);
+        std::memcpy(&r.encrypted_slot_size, in.data() + offset, sizeof(r.encrypted_slot_size));
+        return r;
+    }
+};
+
+/**
+ * Request to write a single slot to a bucket.
+ * Payload follows: encrypted slot data
+ */
+struct WriteSlotRequest {
+    NodeId node_id;
+    uint32_t slot_index;
+    // Followed by: encrypted_slot_data (variable length)
+
+    static constexpr size_t HEADER_SIZE = sizeof(NodeId) + sizeof(uint32_t);
+
+    void serialize_header(std::span<Byte> out) const {
+        assert(out.size() >= HEADER_SIZE);
+        size_t offset = 0;
+        std::memcpy(out.data() + offset, &node_id, sizeof(node_id));
+        offset += sizeof(node_id);
+        std::memcpy(out.data() + offset, &slot_index, sizeof(slot_index));
+    }
+
+    static WriteSlotRequest deserialize_header(std::span<const Byte> in) {
+        assert(in.size() >= HEADER_SIZE);
+        WriteSlotRequest r;
+        size_t offset = 0;
+        std::memcpy(&r.node_id, in.data() + offset, sizeof(r.node_id));
+        offset += sizeof(r.node_id);
+        std::memcpy(&r.slot_index, in.data() + offset, sizeof(r.slot_index));
+        return r;
+    }
+};
+
+/**
+ * Response containing slot data.
+ * Payload is the raw encrypted slot.
+ */
+struct SlotDataResponse {
+    // Payload is the encrypted slot data
 };
 
 } // namespace oram

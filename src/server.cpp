@@ -95,6 +95,35 @@ void OramServer::write_buckets(const std::vector<NodeId>& node_ids,
     }
 }
 
+std::vector<Byte> OramServer::read_slot(NodeId node_id, size_t slot_index,
+                                        size_t encrypted_slot_size) const {
+    if (node_id >= storage_.size()) {
+        throw std::out_of_range("Invalid node ID");
+    }
+
+    size_t offset = slot_index * encrypted_slot_size;
+    if (offset + encrypted_slot_size > bucket_size_) {
+        throw std::out_of_range("Invalid slot index");
+    }
+
+    std::vector<Byte> slot_data(encrypted_slot_size);
+    std::memcpy(slot_data.data(), storage_[node_id].data() + offset, encrypted_slot_size);
+    return slot_data;
+}
+
+void OramServer::write_slot(NodeId node_id, size_t slot_index, std::span<const Byte> data) {
+    if (node_id >= storage_.size()) {
+        throw std::out_of_range("Invalid node ID");
+    }
+
+    size_t offset = slot_index * data.size();
+    if (offset + data.size() > bucket_size_) {
+        throw std::out_of_range("Invalid slot index");
+    }
+
+    std::memcpy(storage_[node_id].data() + offset, data.data(), data.size());
+}
+
 void OramServer::run(int port) {
     // Create server socket and wait for connection
     NetIO io(nullptr, port, true, true);  // server mode, full buffering, quiet
@@ -137,6 +166,12 @@ void OramServer::handle_client(NetIO& io) {
                 break;
             case MessageType::WriteBuckets:
                 handle_write_buckets(io, payload_buf);
+                break;
+            case MessageType::ReadSlot:
+                handle_read_slot(io, payload_buf);
+                break;
+            case MessageType::WriteSlot:
+                handle_write_slot(io, payload_buf);
                 break;
             case MessageType::Init:
                 handle_init(io, payload_buf);
@@ -257,6 +292,24 @@ void OramServer::handle_write_buckets(NetIO& io, std::span<const Byte> payload) 
     }
 
     write_buckets(node_ids, buckets);
+    send_message(io, MessageType::Ack, {});
+}
+
+void OramServer::handle_read_slot(NetIO& io, std::span<const Byte> payload) {
+    auto req = ReadSlotRequest::deserialize(payload);
+    auto slot_data = read_slot(req.node_id, req.slot_index, req.encrypted_slot_size);
+    send_message(io, MessageType::SlotData, slot_data);
+}
+
+void OramServer::handle_write_slot(NetIO& io, std::span<const Byte> payload) {
+    auto req = WriteSlotRequest::deserialize_header(payload);
+
+    // Extract slot data (everything after the header)
+    const Byte* slot_data_ptr = payload.data() + WriteSlotRequest::HEADER_SIZE;
+    size_t slot_data_size = payload.size() - WriteSlotRequest::HEADER_SIZE;
+    std::span<const Byte> slot_data(slot_data_ptr, slot_data_size);
+
+    write_slot(req.node_id, req.slot_index, slot_data);
     send_message(io, MessageType::Ack, {});
 }
 
@@ -475,6 +528,43 @@ void OramClient::write_buckets(const std::vector<NodeId>& node_ids,
     auto header = recv_header();
     if (header.type != MessageType::Ack) {
         throw std::runtime_error("Write buckets failed");
+    }
+}
+
+std::vector<Byte> OramClient::read_slot(NodeId node_id, size_t slot_index,
+                                        size_t encrypted_slot_size) {
+    ReadSlotRequest req;
+    req.node_id = node_id;
+    req.slot_index = static_cast<uint32_t>(slot_index);
+    req.encrypted_slot_size = static_cast<uint32_t>(encrypted_slot_size);
+
+    std::vector<Byte> payload(ReadSlotRequest::SIZE);
+    req.serialize(payload);
+    send_request(MessageType::ReadSlot, payload);
+
+    auto header = recv_header();
+    if (header.type != MessageType::SlotData) {
+        throw std::runtime_error("Unexpected response type");
+    }
+
+    std::vector<Byte> slot_data(header.payload_size);
+    recv_payload(slot_data);
+    return slot_data;
+}
+
+void OramClient::write_slot(NodeId node_id, size_t slot_index, std::span<const Byte> data) {
+    WriteSlotRequest req;
+    req.node_id = node_id;
+    req.slot_index = static_cast<uint32_t>(slot_index);
+
+    std::vector<Byte> payload(WriteSlotRequest::HEADER_SIZE + data.size());
+    req.serialize_header(payload);
+    std::memcpy(payload.data() + WriteSlotRequest::HEADER_SIZE, data.data(), data.size());
+    send_request(MessageType::WriteSlot, payload);
+
+    auto header = recv_header();
+    if (header.type != MessageType::Ack) {
+        throw std::runtime_error("Write slot failed");
     }
 }
 
