@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(oram_lib VERSION 1.0.0 LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # C++20 required for std::span
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
