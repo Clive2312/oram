@@ -1,0 +1,2 @@
+/usr/bin/ar qc liboram.a CMakeFiles/oram.dir/src/crypto.cpp.o CMakeFiles/oram.dir/src/bucket_codec.cpp.o CMakeFiles/oram.dir/src/server.cpp.o CMakeFiles/oram.dir/src/oram.cpp.o CMakeFiles/oram.dir/src/path_oram.cpp.o CMakeFiles/oram.dir/src/ring_oram.cpp.o
+/usr/bin/ranlib liboram.a
