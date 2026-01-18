@@ -77,6 +77,10 @@ target_link_libraries(path_oram_test oram)
 add_executable(path_oram_network_test tests/path_oram_network_test.cpp)
 target_link_libraries(path_oram_network_test oram)
 
+# Ring ORAM integration test
+add_executable(ring_oram_test tests/ring_oram_test.cpp)
+target_link_libraries(ring_oram_test oram)
+
 # =============================================================================
 # Clean targets
 # =============================================================================

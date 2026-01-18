@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cstring>
+#include <unordered_set>
 
 namespace oram {
 
@@ -161,26 +162,29 @@ void RingOram::init(const OramConfig& config) {
     }
 
     // Set up server connection
+    // Ring ORAM uses slotwise encryption for individual slot access
+    size_t encrypted_bucket_size_slotwise = codec_->encrypted_slot_size() * (params_.Z + params_.S);
+
     if (config.use_local_server) {
         local_server_ = std::make_unique<OramServer>(
             params_.num_buckets,
-            codec_->encrypted_bucket_size()
+            encrypted_bucket_size_slotwise
         );
 
-        // Initialize with encrypted dummy buckets
+        // Initialize with encrypted dummy buckets (slotwise encoding)
         local_server_->init([this](NodeId) {
             Bucket bucket(params_.Z + params_.S, params_.block_size);
-            return codec_->encode(bucket);
+            return codec_->encode_bucket_slotwise(bucket);
         });
 
         remote_client_ = nullptr;
     } else if (config.network) {
         remote_client_ = std::make_unique<OramClient>(
             *config.network,
-            codec_->encrypted_bucket_size(),
+            encrypted_bucket_size_slotwise,
             params_.tree_depth
         );
-        remote_client_->init(params_.num_buckets, codec_->encrypted_bucket_size());
+        remote_client_->init(params_.num_buckets, encrypted_bucket_size_slotwise);
         local_server_ = nullptr;
     } else {
         throw std::invalid_argument("Must specify either use_local_server=true or provide network");
@@ -205,152 +209,275 @@ std::vector<Byte> RingOram::access(BlockId block_id, std::optional<std::span<con
 
 std::vector<Byte> RingOram::ring_oram_access(Operation op, BlockId block_id,
                                               std::span<const Byte> new_data) {
-    // TODO: Implement in Step 3
-    //
-    // The Ring ORAM access algorithm from the pseudocode:
-    //
-    // l_old := PositionMap[a]
-    // l_new := UniformRandomLeaf()
-    // PositionMap[a] := l_new
-    //
-    // data := ReadPath(l_old, a)  // returns data if found, else nullopt
-    //
-    // IF data == nullopt:
-    //   data := RemoveFromStash(a)
-    //
-    // IF op == READ:
-    //   RETURN data
-    // ELSE:
-    //   data := new_data
-    //   Stash := Stash ∪ {(a, l_new, data)}
-    //
-    // round := (round + 1) mod A
-    // IF round == 0:
-    //   EvictPath()
-    //
-    // EarlyReshuffle(l_old)
+    // Step 1: Remap position
+    LeafId l_old = position_map_->get(block_id);
+    LeafId l_new = position_map_->random_leaf();
+    position_map_->set(block_id, l_new);
 
-    ORAM_UNIMPLEMENTED();
+    // Step 2: Read path (reads exactly one slot per bucket)
+    std::optional<std::vector<Byte>> data = read_path(l_old, block_id);
+
+    // Step 3: If block not found on path, it must be in stash
+    if (!data.has_value()) {
+        Block* stash_block = stash_.find(block_id);
+        if (stash_block) {
+            data = stash_block->data;
+            stash_.remove(block_id);  // Remove from stash since we're remapping it
+        } else {
+            // Block never written, return zeros
+            data = std::vector<Byte>(params_.block_size, 0);
+        }
+    }
+
+    std::vector<Byte> result_data = data.value();
+
+    // Step 4: Handle write operation
+    if (op == Operation::Write) {
+        // Update data and place back in stash with new leaf assignment
+        Block updated_block(block_id, l_new, new_data);
+        stash_.insert(updated_block);
+    } else {
+        // For read, place block back in stash with new leaf assignment
+        Block updated_block(block_id, l_new, result_data);
+        stash_.insert(updated_block);
+    }
+
+    // Step 5: Increment round counter and maybe evict
+    round_ = (round_ + 1) % params_.A;
+    if (round_ == 0) {
+        evict_path();
+    }
+
+    // Step 6: Early reshuffle
+    early_reshuffle(l_old);
+
+    return result_data;
 }
 
 std::optional<std::vector<Byte>> RingOram::read_path(LeafId leaf_id, BlockId target_block_id) {
-    // TODO: Implement in Step 3
-    //
-    // ReadPath reads exactly one slot per bucket on the path, invalidates it,
-    // and increments count.
-    //
-    // FOR level = 0 .. L:
-    //   bucket := BucketAtPath(l, level)
-    //   offset := GetBlockOffset(bucket, a)
-    //   blk := ReadSlot(bucket, offset)
-    //   Invalidate(bucket, offset)
-    //   IF blk.addr == a:
-    //     found := blk.data
-    //   bucket.count := bucket.count + 1
-    //
-    // RETURN found
+    std::optional<std::vector<Byte>> found = std::nullopt;
 
-    ORAM_UNIMPLEMENTED();
+    // Traverse path from root to leaf
+    for (size_t level = 0; level <= params_.tree_depth; level++) {
+        NodeId node_id = TreeUtil::node_on_path(leaf_id, level, params_.tree_depth);
+
+        // Get physical slot to read (either target block or dummy)
+        size_t slot_offset = get_block_offset(node_id, target_block_id);
+
+        // Read this slot
+        Block block = read_slot(node_id, slot_offset);
+
+        // Invalidate the slot
+        invalidate_slot(node_id, slot_offset);
+
+        // Check if this is the target block
+        if (block.block_id == target_block_id) {
+            found = block.data;
+        }
+
+        // Increment bucket's touch count
+        bucket_metadata_[node_id].count++;
+    }
+
+    return found;
 }
 
 void RingOram::evict_path() {
-    // TODO: Implement in Step 3
-    //
-    // EvictPath runs on a deterministic public schedule:
-    //
-    // l := G mod 2^L
-    // G := G + 1
-    //
-    // # Read phase: move remaining real blocks from buckets into stash
-    // FOR level = 0 .. L:
-    //   bucket := BucketAtPath(l, level)
-    //   Stash := Stash ∪ ReadBucket(bucket)
-    //
-    // # Write phase: push stash blocks down and reshuffle buckets
-    // FOR level = L .. 0:
-    //   bucket := BucketAtPath(l, level)
-    //   WriteBucket(bucket, Stash)
-    //   bucket.count := 0
+    // Determine eviction path using global counter G
+    LeafId evict_leaf = evict_g_ % params_.num_leaves;
+    evict_g_++;
 
-    ORAM_UNIMPLEMENTED();
+    // Read phase: move remaining real blocks from buckets on path into stash
+    for (size_t level = 0; level <= params_.tree_depth; level++) {
+        NodeId node_id = TreeUtil::node_on_path(evict_leaf, level, params_.tree_depth);
+        read_bucket_into_stash(node_id);
+    }
+
+    // Write phase: push stash blocks down (greedy deep-first) and reshuffle buckets
+    for (int level = static_cast<int>(params_.tree_depth); level >= 0; level--) {
+        NodeId node_id = TreeUtil::node_on_path(evict_leaf, level, params_.tree_depth);
+        write_bucket_from_stash(node_id);
+        // count is reset to 0 in write_bucket_from_stash
+    }
 }
 
 void RingOram::early_reshuffle(LeafId leaf_id) {
-    // TODO: Implement in Step 3
-    //
-    // FOR level = 0 .. L:
-    //   bucket := BucketAtPath(l, level)
-    //   IF bucket.count >= S:
-    //     Stash := Stash ∪ ReadBucket(bucket)
-    //     WriteBucket(bucket, Stash)
-    //     bucket.count := 0
+    // Check each bucket on the accessed path
+    for (size_t level = 0; level <= params_.tree_depth; level++) {
+        NodeId node_id = TreeUtil::node_on_path(leaf_id, level, params_.tree_depth);
 
-    ORAM_UNIMPLEMENTED();
+        // If bucket is running low on valid slots, reshuffle it
+        if (bucket_metadata_[node_id].count >= params_.S) {
+            // Read remaining real blocks into stash
+            read_bucket_into_stash(node_id);
+
+            // Write bucket back with stash blocks (reshuffles and resets count)
+            write_bucket_from_stash(node_id);
+        }
+    }
 }
 
 size_t RingOram::get_block_offset(NodeId node_id, BlockId target_block_id) {
-    // TODO: Implement in Step 3
-    //
-    // Chooses which physical slot to read for this bucket during ReadPath.
-    // If the target is present and still valid, read that slot;
-    // otherwise choose a valid dummy slot.
-    //
-    // FOR j = 0 .. Z-1:
-    //   IF bucket.addrs[j] == a AND bucket.valids[ bucket.ptrs[j] ] == 1:
-    //     RETURN bucket.ptrs[j]
-    // RETURN RandomValidDummySlot(bucket.valids)
+    const auto& meta = bucket_metadata_[node_id];
 
-    ORAM_UNIMPLEMENTED();
+    // Search for target block in the Z real-block slots
+    for (size_t j = 0; j < params_.Z; j++) {
+        size_t physical_slot = meta.ptrs[j];
+        if (meta.addrs[j] == target_block_id && meta.valids.test(physical_slot)) {
+            // Found target block and it's still valid
+            return physical_slot;
+        }
+    }
+
+    // Target not found or not valid, return random valid dummy slot
+    return random_valid_dummy_slot(node_id);
 }
 
 Block RingOram::read_slot(NodeId node_id, size_t slot_index) {
-    // TODO: Implement in Step 3
-    // Read encrypted bucket from server, decrypt, return specific slot
+    // Read encrypted slot from server
+    size_t encrypted_slot_size = codec_->encrypted_slot_size();
+    std::vector<Byte> encrypted_slot;
 
-    ORAM_UNIMPLEMENTED();
+    if (local_server_) {
+        encrypted_slot = local_server_->read_slot(node_id, slot_index, encrypted_slot_size);
+    } else if (remote_client_) {
+        encrypted_slot = remote_client_->read_slot(node_id, slot_index, encrypted_slot_size);
+    } else {
+        throw std::runtime_error("No server connection");
+    }
+
+    // Decrypt and decode slot
+    return codec_->decode_slot(encrypted_slot);
 }
 
 void RingOram::read_bucket_into_stash(NodeId node_id) {
-    // TODO: Implement in Step 3
-    //
-    // Read up to Z real slots (padding with dummy reads if fewer remain).
-    //
-    // real_read := 0
-    // FOR j = 0 .. Z-1:
-    //   t := bucket.ptrs[j]
-    //   IF bucket.valids[t] == 1:
-    //     blk := ReadSlot(bucket, t)
-    //     real_read := real_read + 1
-    //     IF bucket.addrs[j] != ⊥:
-    //       Stash := Stash ∪ {(bucket.addrs[j], bucket.leaves[j], blk.data)}
-    //
-    // WHILE real_read < Z:
-    //   t := RandomValidDummySlot(bucket.valids)
-    //   ReadSlot(bucket, t)
-    //   real_read := real_read + 1
+    auto& meta = bucket_metadata_[node_id];
+    size_t real_read = 0;
 
-    ORAM_UNIMPLEMENTED();
+    // Read up to Z real slots
+    for (size_t j = 0; j < params_.Z; j++) {
+        size_t physical_slot = meta.ptrs[j];
+
+        if (meta.valids.test(physical_slot)) {
+            // Read this slot
+            Block block = read_slot(node_id, physical_slot);
+            real_read++;
+
+            // If it's a real block (not dummy), add to stash
+            if (meta.addrs[j] != INVALID_BLOCK_ID) {
+                // Update block's leaf assignment from metadata
+                block.block_id = meta.addrs[j];
+                block.leaf = meta.leaves[j];
+                stash_.insert(block);
+            }
+
+            // Invalidate this slot
+            invalidate_slot(node_id, physical_slot);
+        }
+    }
+
+    // Pad with dummy reads to reach exactly Z reads
+    while (real_read < params_.Z) {
+        size_t dummy_slot = random_valid_dummy_slot(node_id);
+        read_slot(node_id, dummy_slot);  // Read but discard
+        invalidate_slot(node_id, dummy_slot);
+        real_read++;
+    }
 }
 
 void RingOram::write_bucket_from_stash(NodeId node_id) {
-    // TODO: Implement in Step 3
-    //
-    // Evict compatible blocks from stash into this bucket, then reshuffle
-    // and reset metadata. The bucket must end up with exactly Z+S data slots.
-    //
-    // selected := SelectUpToZCompatibleBlocks(Stash, bucket)
-    // RemoveFromStash(Stash, selected)
-    //
-    // perm := FreshRandomPermutation(0 .. Z+S-1)
-    //
-    // Place selected blocks into permuted data slots
-    // Fill remaining slots with dummy blocks
-    //
-    // Set bucket.valids[*] = 1
-    // Set bucket.count = 0
-    // Refresh and apply encryption to bucket contents
+    auto& meta = bucket_metadata_[node_id];
 
-    ORAM_UNIMPLEMENTED();
+    // Determine which level this bucket is at
+    size_t level = TreeUtil::level_of(node_id);
+
+    // Select up to Z compatible blocks from stash
+    // A block is compatible if it can be placed on this bucket's subtree
+    std::vector<Block> selected;
+    std::vector<BlockId> to_remove;
+
+    for (Block* block_ptr : stash_.all_blocks()) {
+        if (selected.size() >= params_.Z) break;
+
+        // Check if block's assigned leaf passes through this node
+        NodeId node_on_block_path = TreeUtil::node_on_path(block_ptr->leaf, level, params_.tree_depth);
+        if (node_on_block_path == node_id) {
+            selected.push_back(*block_ptr);
+            to_remove.push_back(block_ptr->block_id);
+        }
+    }
+
+    // Remove selected blocks from stash
+    for (BlockId id : to_remove) {
+        stash_.remove(id);
+    }
+
+    // Create fresh random permutation for physical slots
+    std::vector<size_t> perm(params_.Z + params_.S);
+    for (size_t i = 0; i < perm.size(); i++) {
+        perm[i] = i;
+    }
+    // Fisher-Yates shuffle
+    for (size_t i = perm.size() - 1; i > 0; i--) {
+        size_t j = rng_->random_range(i + 1);
+        std::swap(perm[i], perm[j]);
+    }
+
+    // Build bucket with Z+S slots
+    Bucket bucket;
+    bucket.slots.reserve(params_.Z + params_.S);
+
+    // Place selected real blocks in first Z positions (conceptually)
+    // Then place dummies to fill remaining positions
+    for (size_t j = 0; j < params_.Z + params_.S; j++) {
+        if (j < selected.size()) {
+            // Real block
+            bucket.slots.push_back(selected[j]);
+        } else {
+            // Dummy block
+            bucket.slots.push_back(Block::dummy(params_.block_size));
+        }
+    }
+
+    // Apply permutation: reorder slots according to perm
+    Bucket permuted_bucket;
+    permuted_bucket.slots.resize(params_.Z + params_.S);
+    for (size_t i = 0; i < params_.Z + params_.S; i++) {
+        permuted_bucket.slots[perm[i]] = std::move(bucket.slots[i]);
+    }
+
+    // Encrypt bucket (slotwise)
+    std::vector<Byte> encrypted_bucket = codec_->encode_bucket_slotwise(permuted_bucket);
+
+    // Write to server
+    if (local_server_) {
+        local_server_->write_bucket(node_id, encrypted_bucket);
+    } else if (remote_client_) {
+        remote_client_->write_bucket(node_id, encrypted_bucket);
+    } else {
+        throw std::runtime_error("No server connection");
+    }
+
+    // Update metadata
+    // Store metadata for the Z real slots (before permutation)
+    for (size_t j = 0; j < params_.Z; j++) {
+        if (j < selected.size()) {
+            meta.addrs[j] = selected[j].block_id;
+            meta.leaves[j] = selected[j].leaf;
+        } else {
+            meta.addrs[j] = INVALID_BLOCK_ID;
+            meta.leaves[j] = INVALID_LEAF_ID;
+        }
+        meta.ptrs[j] = static_cast<uint8_t>(perm[j]);
+    }
+
+    // Reset all slots to valid
+    for (size_t i = 0; i < params_.Z + params_.S; i++) {
+        meta.valids.set(i);
+    }
+
+    // Reset count
+    meta.count = 0;
 }
 
 void RingOram::invalidate_slot(NodeId node_id, size_t slot_index) {
@@ -359,18 +486,123 @@ void RingOram::invalidate_slot(NodeId node_id, size_t slot_index) {
 }
 
 size_t RingOram::random_valid_dummy_slot(NodeId node_id) {
-    // TODO: Implement in Step 3
-    // Find valid slots in the dummy region (indices Z to Z+S-1)
-    // Return a random one
+    const auto& meta = bucket_metadata_[node_id];
 
-    ORAM_UNIMPLEMENTED();
+    // Find which physical slots are occupied by real blocks
+    std::unordered_set<size_t> real_block_slots;
+    for (size_t j = 0; j < params_.Z; j++) {
+        real_block_slots.insert(meta.ptrs[j]);
+    }
+
+    // Collect all valid dummy slots (physical slots NOT used by real blocks)
+    std::vector<size_t> valid_dummies;
+    for (size_t i = 0; i < params_.Z + params_.S; i++) {
+        if (real_block_slots.find(i) == real_block_slots.end() && meta.valids.test(i)) {
+            valid_dummies.push_back(i);
+        }
+    }
+
+    if (valid_dummies.empty()) {
+        throw std::runtime_error("No valid dummy slots available in bucket");
+    }
+
+    // Return random valid dummy slot
+    size_t idx = rng_->random_range(valid_dummies.size());
+    return valid_dummies[idx];
 }
 
 void RingOram::check_invariants() const {
-    // TODO: Implement in Step 3
-    // Verify Ring ORAM invariants (for testing only)
+    // This is only for testing small instances
+    // Check basic invariants to ensure ORAM correctness
 
-    ORAM_UNIMPLEMENTED();
+    // Invariant 1: Each block ID appears at most once across stash + all buckets
+    std::unordered_map<BlockId, size_t> block_counts;
+
+    // Count blocks in stash
+    for (const Block* block_ptr : stash_.all_blocks()) {
+        if (block_ptr->block_id != INVALID_BLOCK_ID) {
+            block_counts[block_ptr->block_id]++;
+        }
+    }
+
+    // Count blocks in buckets (using metadata)
+    for (size_t node_id = 0; node_id < bucket_metadata_.size(); node_id++) {
+        const auto& meta = bucket_metadata_[node_id];
+
+        // Check the Z real-block slots
+        for (size_t j = 0; j < params_.Z; j++) {
+            if (meta.addrs[j] != INVALID_BLOCK_ID) {
+                size_t physical_slot = meta.ptrs[j];
+
+                // Only count if slot is still valid (not yet read)
+                if (meta.valids.test(physical_slot)) {
+                    block_counts[meta.addrs[j]]++;
+                }
+            }
+        }
+    }
+
+    // Verify uniqueness
+    for (const auto& [block_id, count] : block_counts) {
+        if (count > 1) {
+            throw std::runtime_error("Invariant violated: Block " +
+                                   std::to_string(block_id) +
+                                   " appears " + std::to_string(count) + " times");
+        }
+    }
+
+    // Invariant 2: Position map consistency
+    // Each block's assigned leaf should match what's in stash/buckets
+    for (BlockId block_id = 0; block_id < params_.num_blocks; block_id++) {
+        LeafId pm_leaf = position_map_->get(block_id);
+
+        // Find block in stash
+        Block* stash_block = const_cast<Stash&>(stash_).find(block_id);
+        if (stash_block) {
+            if (stash_block->leaf != pm_leaf) {
+                throw std::runtime_error("Invariant violated: Position map mismatch for block " +
+                                       std::to_string(block_id));
+            }
+        }
+
+        // Find block in buckets (check metadata)
+        for (size_t node_id = 0; node_id < bucket_metadata_.size(); node_id++) {
+            const auto& meta = bucket_metadata_[node_id];
+            for (size_t j = 0; j < params_.Z; j++) {
+                if (meta.addrs[j] == block_id) {
+                    size_t physical_slot = meta.ptrs[j];
+                    if (meta.valids.test(physical_slot)) {
+                        if (meta.leaves[j] != pm_leaf) {
+                            throw std::runtime_error("Invariant violated: Bucket leaf mismatch for block " +
+                                                   std::to_string(block_id));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Invariant 3: Bucket capacity
+    // At most Z real blocks per bucket (not counting invalidated ones)
+    for (size_t node_id = 0; node_id < bucket_metadata_.size(); node_id++) {
+        const auto& meta = bucket_metadata_[node_id];
+        size_t valid_real_blocks = 0;
+
+        for (size_t j = 0; j < params_.Z; j++) {
+            if (meta.addrs[j] != INVALID_BLOCK_ID) {
+                size_t physical_slot = meta.ptrs[j];
+                if (meta.valids.test(physical_slot)) {
+                    valid_real_blocks++;
+                }
+            }
+        }
+
+        if (valid_real_blocks > params_.Z) {
+            throw std::runtime_error("Invariant violated: Bucket " + std::to_string(node_id) +
+                                   " has " + std::to_string(valid_real_blocks) + " real blocks (max " +
+                                   std::to_string(params_.Z) + ")");
+        }
+    }
 }
 
 } // namespace oram

@@ -27,6 +27,9 @@ test: build
 	@echo ""
 	@echo "Running Path ORAM network tests..."
 	@./$(BUILD_DIR)/path_oram_network_test
+	@echo ""
+	@echo "Running Ring ORAM tests..."
+	@./$(BUILD_DIR)/ring_oram_test
 
 # Run individual tests
 test-simple: build
@@ -37,6 +40,9 @@ test-path: build
 
 test-network: build
 	@./$(BUILD_DIR)/path_oram_network_test
+
+test-ring: build
+	@./$(BUILD_DIR)/ring_oram_test
 
 # Clean build artifacts (keeps CMake cache)
 clean:
