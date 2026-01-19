@@ -18,11 +18,10 @@ class PositionMap {
 public:
     /**
      * Construct a position map.
-     * @param num_leaves Number of leaves in the ORAM tree
      * @param rng Random number generator for leaf assignment
      */
-    PositionMap(size_t num_leaves, std::function<LeafId()> rng)
-        : num_leaves_(num_leaves), rng_(std::move(rng)) {}
+    explicit PositionMap(std::function<LeafId()> rng)
+        : rng_(std::move(rng)) {}
 
     /**
      * Get the current leaf assignment for a block.
@@ -79,7 +78,6 @@ public:
     void clear() { map_.clear(); }
 
 private:
-    size_t num_leaves_;
     std::unordered_map<BlockId, LeafId> map_;
     std::function<LeafId()> rng_;
 };

@@ -9,6 +9,7 @@
 #include <cassert>
 #include <random>
 #include <map>
+#include <set>
 
 // Helper: Generate random data for testing
 std::vector<oram::Byte> generate_random_data(size_t size, std::mt19937& rng) {
@@ -36,7 +37,7 @@ public:
         if (it != data_.end()) {
             return it->second;
         }
-        return std::vector<oram::Byte>(block_size_, 0);
+        throw std::runtime_error("Cannot read block that was never written");
     }
 
     void write(oram::BlockId id, const std::vector<oram::Byte>& data) {
@@ -105,7 +106,7 @@ void test_multiple_blocks() {
 }
 
 void test_read_before_write() {
-    std::cout << "Test: Read before write (should return zeros)" << std::endl;
+    std::cout << "Test: Read before write (should throw error)" << std::endl;
 
     oram::PathOram oram;
     oram::OramConfig config;
@@ -116,14 +117,15 @@ void test_read_before_write() {
 
     oram.init(config);
 
-    // Read a block that was never written
-    auto data = oram.read(5);
-    assert(data.size() == 32);
-
-    // Should be all zeros
-    for (auto byte : data) {
-        assert(byte == 0);
+    // Read a block that was never written - should throw error
+    bool caught_exception = false;
+    try {
+        auto data = oram.read(5);
+        assert(false && "Should have thrown exception");
+    } catch (const std::runtime_error& e) {
+        caught_exception = true;
     }
+    assert(caught_exception);
 
     std::cout << "  PASSED" << std::endl;
 }
@@ -198,14 +200,14 @@ void test_access_api() {
 
     // Write using access
     auto write_data = generate_random_data_seeded(64, 4000);
-    auto old_data = oram.access(2, write_data);
+    auto old_data = oram.access(oram::Operation::Write, 2, write_data);
     // Should return zeros since block was never written
     for (auto byte : old_data) {
         assert(byte == 0);
     }
 
     // Read using access
-    auto read_data = oram.access(2, std::nullopt);
+    auto read_data = oram.access(oram::Operation::Read, 2, std::nullopt);
     assert(read_data == write_data);
 
     std::cout << "  PASSED" << std::endl;
@@ -234,9 +236,17 @@ void test_random_workload() {
     std::uniform_int_distribution<int> op_dist(0, 1);  // 0=read, 1=write
     std::uniform_int_distribution<int> byte_dist(0, 255);
 
+    // Track which blocks have been written
+    std::set<oram::BlockId> written_blocks;
+
     for (size_t op = 0; op < num_operations; op++) {
         oram::BlockId block_id = block_dist(rng);
         bool is_write = op_dist(rng) == 1;
+
+        // If block was never written and operation is read, force it to be a write instead
+        if (!is_write && written_blocks.find(block_id) == written_blocks.end()) {
+            is_write = true;
+        }
 
         if (is_write) {
             // Write with random data
@@ -247,6 +257,7 @@ void test_random_workload() {
 
             oram.write(block_id, data);
             ref.write(block_id, data);
+            written_blocks.insert(block_id);
         } else {
             // Read and compare
             auto oram_data = oram.read(block_id);

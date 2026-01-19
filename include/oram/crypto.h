@@ -38,9 +38,7 @@ struct AeadKey {
 
     // Generate a random key
     static AeadKey generate();
-
-    // Create from hex string (for testing)
-    static AeadKey from_hex(const char* hex);
+    
 };
 
 /**

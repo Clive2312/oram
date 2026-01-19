@@ -63,8 +63,10 @@ void BucketCodec::serialize_bucket(const Bucket& bucket, std::span<Byte> out) {
         std::memcpy(ptr, &block.leaf, sizeof(LeafId));
         ptr += sizeof(LeafId);
 
-        // Write data (pad with zeros if needed)
-        if (block.data.size() >= block_size_) {
+        // Write data (pad with zeros if needed, error if too large)
+        if (block.data.size() > block_size_) {
+            throw std::runtime_error("Block data size exceeds configured block_size");
+        } else if (block.data.size() == block_size_) {
             std::memcpy(ptr, block.data.data(), block_size_);
         } else {
             std::memcpy(ptr, block.data.data(), block.data.size());
@@ -120,8 +122,10 @@ void BucketCodec::serialize_slot(const Block& block, std::span<Byte> out) {
     std::memcpy(ptr, &block.leaf, sizeof(LeafId));
     ptr += sizeof(LeafId);
 
-    // Write data (pad with zeros if needed)
-    if (block.data.size() >= block_size_) {
+    // Write data (pad with zeros if needed, error if too large)
+    if (block.data.size() > block_size_) {
+        throw std::runtime_error("Block data size exceeds configured block_size");
+    } else if (block.data.size() == block_size_) {
         std::memcpy(ptr, block.data.data(), block_size_);
     } else {
         std::memcpy(ptr, block.data.data(), block.data.size());

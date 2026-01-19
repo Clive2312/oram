@@ -30,22 +30,7 @@ AeadKey AeadKey::generate() {
     return key;
 }
 
-AeadKey AeadKey::from_hex(const char* hex) {
-    AeadKey key;
-    size_t len = std::strlen(hex);
-    if (len != crypto::KEY_SIZE * 2) {
-        throw std::invalid_argument("Hex key must be 64 characters");
-    }
-    for (size_t i = 0; i < crypto::KEY_SIZE; i++) {
-        unsigned int byte;
-        std::sscanf(hex + i * 2, "%02x", &byte);
-        key.bytes[i] = static_cast<Byte>(byte);
-    }
-    return key;
-}
-
 // AeadNonce implementation
-
 AeadNonce AeadNonce::generate() {
     AeadNonce nonce;
     if (RAND_bytes(nonce.bytes.data(), crypto::IV_SIZE) != 1) {
@@ -66,7 +51,6 @@ AeadNonce AeadNonce::from_counter(uint64_t counter) {
 }
 
 // Aead implementation
-
 Aead::Aead(const AeadKey& key) : key_(key) {}
 
 Aead::~Aead() = default;

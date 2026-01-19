@@ -86,7 +86,7 @@ public:
 
     std::vector<Byte> read(BlockId block_id) override;
     void write(BlockId block_id, std::span<const Byte> data) override;
-    std::vector<Byte> access(BlockId block_id, std::optional<std::span<const Byte>> data) override;
+    std::vector<Byte> access(Operation op, BlockId block_id, std::optional<std::span<const Byte>> data) override;
 
     const OramParams& params() const override { return params_; }
     OramType type() const override { return OramType::RingOram; }
@@ -112,8 +112,6 @@ private:
      * 5. Increment round, maybe EvictPath
      * 6. EarlyReshuffle
      */
-    std::vector<Byte> ring_oram_access(Operation op, BlockId block_id,
-                                       std::span<const Byte> new_data);
 
     /**
      * Read path for Ring ORAM.

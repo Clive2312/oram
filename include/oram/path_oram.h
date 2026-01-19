@@ -55,11 +55,12 @@ public:
      * This is the core ORAM operation. Both read and write are implemented
      * as special cases of this function.
      *
+     * @param op Operation type (Read or Write)
      * @param block_id The logical block address
-     * @param data If provided, write this data; otherwise read
+     * @param data Data to write (required for Write, ignored for Read)
      * @return The old data (for write) or current data (for read)
      */
-    std::vector<Byte> access(BlockId block_id, std::optional<std::span<const Byte>> data) override;
+    std::vector<Byte> access(Operation op, BlockId block_id, std::optional<std::span<const Byte>> data) override;
 
     const OramParams& params() const override { return params_; }
     OramType type() const override { return OramType::PathOram; }
@@ -78,22 +79,6 @@ public:
     void check_invariants() const override;
 
 private:
-    /**
-     * Core access operation following the pseudocode.
-     *
-     * 1. Remap: x_old = PositionMap[a], PositionMap[a] = random leaf
-     * 2. Read path: for all levels, read bucket into stash
-     * 3. Serve request from stash
-     * 4. Write back path: greedy deep-first eviction
-     *
-     * @param op Operation type (Read or Write)
-     * @param block_id Block address
-     * @param new_data New data for write (ignored for read)
-     * @return Old/current data
-     */
-    std::vector<Byte> path_oram_access(Operation op, BlockId block_id,
-                                       std::span<const Byte> new_data);
-
     /**
      * Read all buckets on path to leaf into stash.
      *

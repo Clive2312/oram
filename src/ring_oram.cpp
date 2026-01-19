@@ -114,7 +114,7 @@ void RingOram::init(const OramConfig& config) {
         throw std::invalid_argument("S must be > 0 for Ring ORAM");
     }
     if (config.A == 0) {
-        throw std::invalid_argument("A (eviction period) must be > 0");
+        throw std::invalid_argument("A (eviction rate) must be > 0");
     }
     if (config.Z + config.S > RingBucketMetadata::MAX_SLOTS) {
         throw std::invalid_argument("Z + S exceeds maximum slots");
@@ -140,7 +140,6 @@ void RingOram::init(const OramConfig& config) {
 
     // Set up position map
     position_map_ = std::make_unique<PositionMap>(
-        params_.num_leaves,
         [this]() { return rng_->random_leaf(params_.num_leaves); }
     );
 
@@ -192,44 +191,37 @@ void RingOram::init(const OramConfig& config) {
 }
 
 std::vector<Byte> RingOram::read(BlockId block_id) {
-    return access(block_id, std::nullopt);
+    return access(Operation::Read, block_id, std::nullopt);
 }
 
 void RingOram::write(BlockId block_id, std::span<const Byte> data) {
-    access(block_id, data);
+    access(Operation::Write, block_id, data);
 }
 
-std::vector<Byte> RingOram::access(BlockId block_id, std::optional<std::span<const Byte>> data) {
-    if (data.has_value()) {
-        return ring_oram_access(Operation::Write, block_id, data.value());
-    } else {
-        return ring_oram_access(Operation::Read, block_id, {});
-    }
-}
+std::vector<Byte> RingOram::access(Operation op, BlockId block_id, std::optional<std::span<const Byte>> data) {
+    std::span<const Byte> new_data = data.value_or(std::span<const Byte>{});
 
-std::vector<Byte> RingOram::ring_oram_access(Operation op, BlockId block_id,
-                                              std::span<const Byte> new_data) {
     // Step 1: Remap position
     LeafId l_old = position_map_->get(block_id);
     LeafId l_new = position_map_->random_leaf();
     position_map_->set(block_id, l_new);
 
     // Step 2: Read path (reads exactly one slot per bucket)
-    std::optional<std::vector<Byte>> data = read_path(l_old, block_id);
+    std::optional<std::vector<Byte>> found_data = read_path(l_old, block_id);
 
     // Step 3: If block not found on path, it must be in stash
-    if (!data.has_value()) {
+    if (!found_data.has_value()) {
         Block* stash_block = stash_.find(block_id);
         if (stash_block) {
-            data = stash_block->data;
+            found_data = stash_block->data;
             stash_.remove(block_id);  // Remove from stash since we're remapping it
         } else {
             // Block never written, return zeros
-            data = std::vector<Byte>(params_.block_size, 0);
+            found_data = std::vector<Byte>(params_.block_size, 0);
         }
     }
 
-    std::vector<Byte> result_data = data.value();
+    std::vector<Byte> result_data = found_data.value();
 
     // Step 4: Handle write operation
     if (op == Operation::Write) {

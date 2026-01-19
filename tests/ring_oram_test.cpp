@@ -29,7 +29,7 @@ void test_single_block_read_write() {
     config.block_size = 64;
     config.Z = 3;           // Bucket capacity
     config.S = 2;           // Extra dummy slots
-    config.A = 4;           // Eviction period
+    config.A = 4;           // Eviction rate
     config.use_local_server = true;
     config.rng = std::make_shared<oram::DeterministicOramRng>(12345);
 

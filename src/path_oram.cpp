@@ -15,9 +15,6 @@ void PathOram::init(const OramConfig& config) {
     if (config.block_size == 0) {
         throw std::invalid_argument("block_size must be > 0");
     }
-    if (config.Z < 4) {
-        throw std::invalid_argument("Z must be >= 4 for Path ORAM security");
-    }
 
     // Compute parameters
     params_ = OramParams::compute(config.num_blocks, config.block_size, config.Z);
@@ -38,7 +35,6 @@ void PathOram::init(const OramConfig& config) {
 
     // Set up position map
     position_map_ = std::make_unique<PositionMap>(
-        params_.num_leaves,
         [this]() { return rng_->random_leaf(params_.num_leaves); }
     );
 
@@ -74,23 +70,16 @@ void PathOram::init(const OramConfig& config) {
 }
 
 std::vector<Byte> PathOram::read(BlockId block_id) {
-    return access(block_id, std::nullopt);
+    return access(Operation::Read, block_id, std::nullopt);
 }
 
 void PathOram::write(BlockId block_id, std::span<const Byte> data) {
-    access(block_id, data);
+    access(Operation::Write, block_id, data);
 }
 
-std::vector<Byte> PathOram::access(BlockId block_id, std::optional<std::span<const Byte>> data) {
-    if (data.has_value()) {
-        return path_oram_access(Operation::Write, block_id, data.value());
-    } else {
-        return path_oram_access(Operation::Read, block_id, {});
-    }
-}
+std::vector<Byte> PathOram::access(Operation op, BlockId block_id, std::optional<std::span<const Byte>> data) {
+    std::span<const Byte> new_data = data.value_or(std::span<const Byte>{});
 
-std::vector<Byte> PathOram::path_oram_access(Operation op, BlockId block_id,
-                                              std::span<const Byte> new_data) {
     // Validate block_id
     if (block_id >= params_.num_blocks) {
         throw std::out_of_range("Block ID out of range");
@@ -117,7 +106,11 @@ std::vector<Byte> PathOram::path_oram_access(Operation op, BlockId block_id,
         // Block found in stash
         data_old = block_ptr->data;
     } else {
-        // Block not found - return zeros (never written before)
+        // Block not found
+        if (op == Operation::Read) {
+            throw std::runtime_error("Cannot read block that was never written");
+        }
+        // For write operation, block doesn't need to exist yet
         data_old.resize(params_.block_size, 0);
     }
 
@@ -126,12 +119,7 @@ std::vector<Byte> PathOram::path_oram_access(Operation op, BlockId block_id,
         stash_.update(block_id, x_new, std::vector<Byte>(new_data.begin(), new_data.end()));
     } else {
         // For read, update the leaf assignment in stash
-        if (block_ptr) {
-            block_ptr->leaf = x_new;
-        } else {
-            // Block was never written, create it with zeros
-            stash_.insert(block_id, x_new, std::vector<Byte>(params_.block_size, 0));
-        }
+        block_ptr->leaf = x_new;
     }
 
     // Step 4: Evict path (greedy deep-first)
@@ -189,6 +177,7 @@ std::vector<Block> PathOram::select_blocks_for_node(NodeId node_id, size_t max_b
     std::vector<Block> selected;
     std::vector<BlockId> to_remove;
 
+    // TODO: definitely could be optimized, 
     // Find all blocks in stash that can be placed at this node
     // A block can be placed at node_id if node_id is on the path to the block's assigned leaf
     for (auto* block_ptr : stash_.all_blocks()) {

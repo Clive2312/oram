@@ -98,7 +98,7 @@ struct OramConfig {
 
     // Ring ORAM specific
     size_t S = 0;           // Extra dummy slots (for Ring ORAM)
-    size_t A = 1;           // Eviction period (for Ring ORAM)
+    size_t A = 1;           // Eviction rate (for Ring ORAM)
 
     // Encryption key (if not provided, a random key will be generated)
     std::optional<AeadKey> key;
@@ -150,14 +150,12 @@ public:
     /**
      * Combined read-write operation (more efficient than separate calls).
      *
-     * If data is provided, performs a write and returns the old value.
-     * If data is nullopt, performs a read.
-     *
+     * @param op Operation type (Read or Write)
      * @param block_id The logical block address
-     * @param data Optional new data to write
+     * @param data Optional new data to write (required for Write, ignored for Read)
      * @return The block data (old data if write, current data if read)
      */
-    virtual std::vector<Byte> access(BlockId block_id, std::optional<std::span<const Byte>> data) = 0;
+    virtual std::vector<Byte> access(Operation op, BlockId block_id, std::optional<std::span<const Byte>> data) = 0;
 
     /**
      * Get ORAM parameters.

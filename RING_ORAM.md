@@ -167,7 +167,7 @@ This prevents starvation of valid slots for dummy reads.
 Typical Ring ORAM parameters:
 - **Z = 3-4**: Bucket capacity (real blocks)
 - **S = 2-3**: Extra dummy slots
-- **A = 3-5**: Eviction period
+- **A = 3-5**: Eviction rate
 
 Trade-offs:
 - Larger S: More resilient to burst accesses, but larger buckets

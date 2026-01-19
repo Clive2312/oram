@@ -10,6 +10,7 @@
 #include <span>
 #include <cassert>
 #include <cstring>
+#include <cmath>
 
 namespace oram {
 
@@ -57,7 +58,7 @@ struct OramParams {
 
     // Ring ORAM parameters (used only by Ring ORAM)
     size_t S;                // Extra dummy slots per bucket for Ring ORAM
-    size_t A;                // Eviction period for Ring ORAM
+    size_t A;                // Eviction rate for Ring ORAM
 
     /**
      * Compute tree parameters from block count and bucket capacity.
@@ -65,7 +66,7 @@ struct OramParams {
      * @param b Block size in bytes
      * @param z Bucket capacity (Z)
      * @param s Extra dummy slots (S) for Ring ORAM, 0 for Path ORAM
-     * @param a Eviction period (A) for Ring ORAM
+     * @param a Eviction rate (A) for Ring ORAM
      */
     static OramParams compute(size_t n, size_t b, size_t z, size_t s = 0, size_t a = 1) {
         OramParams p;
@@ -75,16 +76,12 @@ struct OramParams {
         p.S = s;
         p.A = a;
 
-        // Compute tree depth L such that num_leaves >= num_blocks
-        // num_leaves = 2^L
-        p.tree_depth = 0;
-        size_t leaves = 1;
-        while (leaves < n) {
-            p.tree_depth++;
-            leaves *= 2;
-        }
-        p.num_leaves = leaves;
-        p.num_buckets = (1ULL << (p.tree_depth + 1)) - 1;
+        // Using formula: num_levels = ceil(log2(num_blocks)) + 1
+        // tree_depth = num_levels - 1
+        size_t num_levels = static_cast<size_t>(std::ceil(std::log2(static_cast<double>(n)))) + 1;
+        p.tree_depth = num_levels - 1;
+        p.num_leaves = 1ULL << p.tree_depth;  // 2^(num_levels-1)
+        p.num_buckets = (1ULL << num_levels) - 1;  // 2^num_levels - 1
 
         return p;
     }
@@ -177,6 +174,8 @@ struct Bucket {
             slots.push_back(Block::dummy(block_size));
         }
     }
+
+    // TODO: might need shuffle here for ring oram
 };
 
 } // namespace oram

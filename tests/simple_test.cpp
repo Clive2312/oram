@@ -96,7 +96,7 @@ void test_position_map() {
         return counter++ % num_leaves;
     };
 
-    oram::PositionMap pm(num_leaves, rng);
+    oram::PositionMap pm(rng);
 
     // First access should assign leaf 0
     assert(pm.get(42) == 0);
