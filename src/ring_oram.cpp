@@ -11,7 +11,7 @@ namespace oram {
 // ============================================================================
 
 void RingBucketMetadata::serialize(std::span<Byte> out, size_t Z, size_t S) const {
-    size_t total_slots = Z + S;
+    // size_t total_slots = Z + S;
     size_t expected_size = serialized_size(Z, S);
 
     if (out.size() < expected_size) {
@@ -148,7 +148,7 @@ void RingOram::init(const OramConfig& config) {
 
     // Initialize round counters
     round_ = 0;
-    evict_g_ = 0;
+    evict_g_ = 1;
 
     // Initialize bucket metadata (client-side)
     bucket_metadata_.resize(params_.num_buckets);
@@ -216,7 +216,11 @@ std::vector<Byte> RingOram::access(Operation op, BlockId block_id, std::optional
             found_data = stash_block->data;
             stash_.remove(block_id);  // Remove from stash since we're remapping it
         } else {
-            // Block never written, return zeros
+            // Block never written
+            if (op == Operation::Read) {
+                throw std::runtime_error("Cannot read block that was never written");
+            }
+            // For write operation, block doesn't need to exist yet
             found_data = std::vector<Byte>(params_.block_size, 0);
         }
     }

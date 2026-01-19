@@ -22,30 +22,21 @@ public:
     /**
      * Get the node ID at a specific level on the path from root to leaf.
      *
+     * Formula: node_id = (2^level - 1) + (leaf_id >> (depth - level))
+     *
+     * Explanation:
+     * - (2^level - 1) gives the first node ID at that level
+     *   (level 0: 0, level 1: 1, level 2: 3, ...)
+     * - (leaf_id >> (depth - level)) determines which node at that level
+     *   by shifting away the lower bits that don't matter yet
+     *
      * @param leaf_id The leaf ID (0 to num_leaves-1)
      * @param level The level in the tree (0 = root, L = leaf)
      * @param depth The tree depth L
      * @return The node ID at the given level on the path
      */
     static NodeId node_on_path(LeafId leaf_id, size_t level, size_t depth) {
-        // At level 0, there's only node 0 (root)
-        // At level L, the node is the leaf itself
-        //
-        // Starting from root (node 0), we traverse down:
-        // - At each level, we go left or right based on bits of leaf_id
-        // - The bit at position (L-1) determines direction at level 1
-        // - The bit at position (L-level) determines direction at level 'level'
-
-        NodeId node = 0;  // Start at root
-        for (size_t l = 0; l < level; l++) {
-            // Bit position: (depth - 1 - l)
-            // If bit is 0, go left (2*node + 1)
-            // If bit is 1, go right (2*node + 2)
-            size_t bit_pos = depth - 1 - l;
-            bool go_right = (leaf_id >> bit_pos) & 1;
-            node = go_right ? (2 * node + 2) : (2 * node + 1);
-        }
-        return node;
+        return ((1ULL << level) - 1) + (leaf_id >> (depth - level));
     }
 
     /**

@@ -13,9 +13,9 @@ void test_tree_util() {
     // Test path computation for a tree with depth 2 (4 leaves)
     // Tree structure:
     //          0           (level 0, root)
-    //        /   \
+    //           
     //       1     2        (level 1)
-    //      / \   / \
+    //      
     //     3   4 5   6      (level 2, leaves)
     //
     // Leaf IDs: 0=node3, 1=node4, 2=node5, 3=node6

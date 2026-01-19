@@ -81,7 +81,7 @@ void test_multiple_blocks() {
 }
 
 void test_read_before_write() {
-    std::cout << "Test: Read before write (should return zeros)" << std::endl;
+    std::cout << "Test: Read before write (should throw error)" << std::endl;
 
     oram::RingOram oram;
     oram::OramConfig config;
@@ -94,14 +94,15 @@ void test_read_before_write() {
 
     oram.init(config);
 
-    // Read a block that was never written
-    auto data = oram.read(5);
-    assert(data.size() == 32);
-
-    // Should be all zeros
-    for (auto byte : data) {
-        assert(byte == 0);
+    // Read a block that was never written - should throw error
+    bool caught_exception = false;
+    try {
+        auto data = oram.read(5);
+        assert(false && "Should have thrown exception");
+    } catch (const std::runtime_error& e) {
+        caught_exception = true;
     }
+    assert(caught_exception);
 
     std::cout << "  PASSED" << std::endl;
 }

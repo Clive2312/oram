@@ -172,10 +172,12 @@ public:
     size_t sent = 0;
     while (sent < len) {
       size_t res = fwrite(sent + (char *)data, 1, len - sent, stream);
-      if (res >= 0)
+      if (res > 0) {
         sent += res;
-      else
-        fprintf(stderr, "error: net_send_data %ld\n", res);
+      } else {
+        fprintf(stderr, "error: net_send_data failed\n");
+        break;
+      }
     }
     has_sent = true;
   }
@@ -191,10 +193,12 @@ public:
     size_t sent = 0;
     while (sent < len) {
       size_t res = fread(sent + (char *)data, 1, len - sent, stream);
-      if (res >= 0)
+      if (res > 0) {
         sent += res;
-      else
-        fprintf(stderr, "error: net_send_data %ld\n", res);
+      } else {
+        fprintf(stderr, "error: net_recv_data failed\n");
+        break;
+      }
     }
   }
 

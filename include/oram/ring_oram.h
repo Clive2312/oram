@@ -23,6 +23,7 @@ namespace oram {
  * - ptrs[]: permutation mapping real slots to physical positions
  */
 struct RingBucketMetadata {
+    // TODO: This is wrong, could be larger
     static constexpr size_t MAX_SLOTS = 64;  // Maximum Z+S
 
     uint32_t count;                          // Touch count since last reshuffle
