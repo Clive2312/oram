@@ -8,20 +8,20 @@
 #include <string>
 #include <vector>
 
-template <class T>
-class DiskDriver : public Driver<T> {
+template <class T, class U = T>
+class DiskDriver : public Driver<T, U> {
 public:
-  explicit DiskDriver(const std::filesystem::path& root_folder, T default_value = T{})
+  explicit DiskDriver(const std::filesystem::path& root_folder, U default_value = U{})
     : root_(root_folder), default_value_(default_value) {
     std::filesystem::create_directories(root_);
   }
 
-  T read_one(size_t pos) override {
+  U read_one(size_t pos) override {
     return read_file(pos);
   }
 
-  T exchange_one(size_t pos, const T& value) override {
-    T old = read_file(pos);
+  U exchange_one(size_t pos, const U& value) override {
+    U old = read_file(pos);
     write_file(pos, value);
     return old;
   }
@@ -33,7 +33,7 @@ private:
     return root_ / std::to_string(pos);
   }
 
-  T read_file(size_t pos) {
+  U read_file(size_t pos) {
     auto path = file_path(pos);
     if (!std::filesystem::exists(path)) {
       return default_value_;
@@ -42,28 +42,28 @@ private:
     if (!ifs) {
       throw std::runtime_error("DiskDriver: failed to open file for reading: " + path.string());
     }
-    T value;
-    ifs.read(reinterpret_cast<char*>(&value), sizeof(T));
+    U value;
+    ifs.read(reinterpret_cast<char*>(&value), sizeof(U));
     if (!ifs) {
       throw std::runtime_error("DiskDriver: failed to read from file: " + path.string());
     }
     return value;
   }
 
-  void write_file(size_t pos, const T& value) {
+  void write_file(size_t pos, const U& value) {
     auto path = file_path(pos);
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
     if (!ofs) {
       throw std::runtime_error("DiskDriver: failed to open file for writing: " + path.string());
     }
-    ofs.write(reinterpret_cast<const char*>(&value), sizeof(T));
+    ofs.write(reinterpret_cast<const char*>(&value), sizeof(U));
     if (!ofs) {
       throw std::runtime_error("DiskDriver: failed to write to file: " + path.string());
     }
   }
 
   std::filesystem::path root_;
-  T default_value_;
+  U default_value_;
 };
 
 #endif // DISK_DRIVER_HPP

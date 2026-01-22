@@ -9,7 +9,7 @@
 #include <variant>
 #include <vector>
 
-template <class T>
+template <class T, class U = T>
 class ORAM {
 public:
   struct Range {
@@ -23,7 +23,7 @@ public:
     enum class Kind { Read, Write, Exchange };
     Kind kind;
     Positions positions;
-    std::vector<T> values;
+    std::vector<U> values;
   };
 
   // OpList is a lightweight chainable container for operator+ syntax.
@@ -38,14 +38,14 @@ public:
   };
 
   struct AccessResults {
-    std::vector<std::optional<std::vector<T>>> results;
+    std::vector<std::optional<std::vector<U>>> results;
   };
 
   static Op read(Positions positions) { return make_read(std::move(positions)); }
-  static Op write(Positions positions, std::vector<T> values) {
+  static Op write(Positions positions, std::vector<U> values) {
     return make_write(std::move(positions), std::move(values));
   }
-  static Op exchange(Positions positions, std::vector<T> values) {
+  static Op exchange(Positions positions, std::vector<U> values) {
     return make_exchange(std::move(positions), std::move(values));
   }
 
@@ -74,11 +74,11 @@ public:
       ops_.push_back(ORAM::read(std::move(positions)));
       return *this;
     }
-    AccessBuilder& write(Positions positions, std::vector<T> values) {
+    AccessBuilder& write(Positions positions, std::vector<U> values) {
       ops_.push_back(ORAM::write(std::move(positions), std::move(values)));
       return *this;
     }
-    AccessBuilder& exchange(Positions positions, std::vector<T> values) {
+    AccessBuilder& exchange(Positions positions, std::vector<U> values) {
       ops_.push_back(ORAM::exchange(std::move(positions), std::move(values)));
       return *this;
     }
@@ -199,10 +199,10 @@ protected:
   static Op make_read(Positions positions) {
     return Op{Op::Kind::Read, std::move(positions), {}};
   }
-  static Op make_write(Positions positions, std::vector<T> values) {
+  static Op make_write(Positions positions, std::vector<U> values) {
     return Op{Op::Kind::Write, std::move(positions), std::move(values)};
   }
-  static Op make_exchange(Positions positions, std::vector<T> values) {
+  static Op make_exchange(Positions positions, std::vector<U> values) {
     return Op{Op::Kind::Exchange, std::move(positions), std::move(values)};
   }
   AccessReq store_access(Op op) {
@@ -226,6 +226,8 @@ public:
 
   // Logical and physical storage sizes.
   virtual size_t size() const = 0;
+  // physical_size is an upper bound on actual storage needed so drivers
+  // can allocate enough untrusted space. Tighter bounds reduce overhead.
   virtual size_t physical_size() const = 0;
 
   // Non-virtual public entrypoint.

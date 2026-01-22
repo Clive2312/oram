@@ -5,32 +5,33 @@
 #include <stdexcept>
 #include <vector>
 
-template <class T>
+template <class T, class U = T>
 class Driver {
 public:
   virtual ~Driver() = default;
 
-  virtual T read_one(size_t pos) = 0;
-  virtual T exchange_one(size_t pos, const T& value) = 0;
+  virtual U read_one(size_t pos) = 0;
+  virtual U exchange_one(size_t pos, const U& value) = 0;
 
-  virtual typename ORAM<T>::AccessResults execute(const typename ORAM<T>::AccessReq& req) {
-    typename ORAM<T>::AccessResults out;
+  virtual typename ORAM<T, U>::AccessResults execute(
+      const typename ORAM<T, U>::AccessReq& req) {
+    typename ORAM<T, U>::AccessResults out;
     out.results.reserve(req.ops.size());
 
     for (const auto& op : req.ops) {
       std::vector<size_t> positions;
       expand_positions(op.positions, positions);
 
-      if (op.kind == ORAM<T>::Op::Kind::Read) {
-        std::vector<T> values;
+      if (op.kind == ORAM<T, U>::Op::Kind::Read) {
+        std::vector<U> values;
         values.reserve(positions.size());
         for (size_t pos : positions) {
           values.push_back(read_one(pos));
         }
         out.results.push_back(std::move(values));
-      } else if (op.kind == ORAM<T>::Op::Kind::Exchange) {
+      } else if (op.kind == ORAM<T, U>::Op::Kind::Exchange) {
         validate_values(positions, op.values);
-        std::vector<T> old_values;
+        std::vector<U> old_values;
         old_values.reserve(positions.size());
         for (size_t i = 0; i < positions.size(); ++i) {
           old_values.push_back(exchange_one(positions[i], op.values[i]));
@@ -49,7 +50,7 @@ public:
   }
 
   // Run an ORAM access operation to completion
-  T run(typename ORAM<T>::AccessResult op) {
+  T run(typename ORAM<T, U>::AccessResult op) {
     op.resume();
     while (!op.done()) {
       if (!op.has_request()) {
@@ -64,14 +65,14 @@ public:
   }
 
 protected:
-  static void expand_positions(const typename ORAM<T>::Positions& positions,
+  static void expand_positions(const typename ORAM<T, U>::Positions& positions,
                                std::vector<size_t>& out) {
     if (auto* vec = std::get_if<std::vector<size_t>>(&positions)) {
       out.insert(out.end(), vec->begin(), vec->end());
       return;
     }
 
-    auto range = std::get<typename ORAM<T>::Range>(positions);
+    auto range = std::get<typename ORAM<T, U>::Range>(positions);
     if (range.count == 0) return;
     if (range.stride == 0) throw std::invalid_argument("Driver: range stride cannot be zero");
 
@@ -84,7 +85,7 @@ protected:
   }
 
   static void validate_values(const std::vector<size_t>& positions,
-                              const std::vector<T>& values) {
+                              const std::vector<U>& values) {
     if (positions.size() != values.size()) {
       throw std::invalid_argument("Driver: positions and values size mismatch");
     }
