@@ -1,0 +1,14 @@
+# Build artifacts
+demo
+*.o
+*.a
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
