@@ -1,5 +1,7 @@
 # Build artifacts
 demo
+oram_tests
+encrypted_oram_tests
 *.o
 *.a
 

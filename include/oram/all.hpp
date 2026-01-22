@@ -10,5 +10,8 @@
 #include "plaintext_oram.hpp"
 #include "naive_oram.hpp"
 #include "toy_oram.hpp"
+#include "encryption/encryptor.hpp"
+#include "encryption/dummy_encryptor.hpp"
+#include "encryption/encrypted_oram.hpp"
 
 #endif // ORAM_ALL_HPP
