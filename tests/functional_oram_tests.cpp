@@ -2,6 +2,7 @@
 #include <oram/naive_oram.hpp>
 #include <oram/memory_driver.hpp>
 #include <oram/path_oram.hpp>
+#include <oram/tracker_oram.hpp>
 
 #include <cstddef>
 #include <iostream>
@@ -147,6 +148,68 @@ void run_path_oram_correctness() {
   }
 }
 
+void run_tracker_oram_path_oram() {
+  std::cout << "[TEST] TrackerORAM with PathORAM\n";
+  using Oram = PathORAM<int>;
+  using Block = PathORAMBlock<int>;
+  constexpr size_t kSize = 8;
+  constexpr size_t kZ = 2;
+
+  Oram inner(kSize, kZ, 123);
+  TrackerORAM<int, Block> tracked(inner);
+  Block default_block{0, 0, false};
+  MemoryDriver<int, Block> driver(tracked.physical_size(), default_block);
+
+  for (size_t pos = 0; pos < inner.size(); ++pos) {
+    auto access_op = tracked.access(pos, static_cast<int>(pos * 10));
+    driver.run(std::move(access_op));
+  }
+
+  auto perm = tracked.extract_permutation();
+  expect_equal(perm.size(), tracked.physical_size(),
+               "TrackerORAM perm size matches physical_size");
+
+  std::cout << "  tracker perm ids: ";
+  for (size_t i = 0; i < perm.size(); ++i) {
+    std::cout << perm[i] << (i + 1 == perm.size() ? "" : " ");
+  }
+  std::cout << "\n";
+
+  std::vector<int> initial(tracked.physical_size(), -1);
+  for (size_t i = 0; i < inner.size(); ++i) {
+    initial[i] = static_cast<int>(i);
+  }
+
+  std::vector<int> permuted(tracked.physical_size(), -1);
+  for (size_t i = 0; i < perm.size(); ++i) {
+    if (perm[i] >= 0) {
+      permuted[i] = initial[static_cast<size_t>(perm[i])];
+    }
+  }
+
+  std::cout << "  permuted ids: ";
+  for (size_t i = 0; i < permuted.size(); ++i) {
+    std::cout << permuted[i] << (i + 1 == permuted.size() ? "" : " ");
+  }
+  std::cout << "\n";
+
+  const auto& storage = driver.storage();
+  std::vector<int> storage_ids;
+  storage_ids.reserve(storage.size());
+  for (const auto& block : storage) {
+    storage_ids.push_back(block.valid ? static_cast<int>(block.block_id) : -1);
+  }
+
+  std::cout << "  storage ids:  ";
+  for (size_t i = 0; i < storage_ids.size(); ++i) {
+    std::cout << storage_ids[i] << (i + 1 == storage_ids.size() ? "" : " ");
+  }
+  std::cout << "\n";
+
+  expect_true(permuted == storage_ids,
+              "TrackerORAM permutation mirrors storage ids");
+}
+
 } // namespace
 
 int main() {
@@ -156,6 +219,7 @@ int main() {
   run_small_size<NaiveORAM<int>>("NaiveORAM");
   run_path_oram_tree_tests();
   run_path_oram_correctness();
+  run_tracker_oram_path_oram();
 
   if (fail_count == 0) {
     std::cout << "All functional ORAM tests passed.\n";

@@ -29,7 +29,7 @@ ORAM (Oblivious RAM) hides memory access patterns from an adversary who can obse
 └─────────────────────┘
 ```
 
-The key insight is that ORAM algorithms express **what** storage operations they need via `co_yield`, while drivers handle **how** those operations are executed. This allows:
+ORAM algorithms express **what** storage operations they need via `co_yield`, while drivers handle **how** those operations are executed. This allows:
 
 - Testing ORAM algorithms with different storage backends
 - Simulating various I/O characteristics

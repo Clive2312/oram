@@ -11,9 +11,14 @@
 // O(log(N)) per access
 template <class T>
 struct PathORAMBlock {
-  size_t id;
+  size_t block_id;
   T data;
   bool valid;
+
+  std::optional<uint32_t> id() const {
+    if (!valid) return std::nullopt;
+    return static_cast<uint32_t>(block_id);
+  }
 };
 
 template <class T>
@@ -147,7 +152,7 @@ private:
 
   T read_from_stash(size_t pos) const {
     for (const auto& block : stash_) {
-      if (block.valid && block.id == pos) {
+      if (block.valid && block.block_id == pos) {
         return block.data;
       }
     }
@@ -158,7 +163,7 @@ private:
     std::vector<Block> remaining;
     remaining.reserve(stash_.size());
     for (const auto& block : stash_) {
-      if (!block.valid || block.id != pos) {
+      if (!block.valid || block.block_id != pos) {
         remaining.push_back(block);
       }
     }
@@ -175,7 +180,7 @@ private:
     size_t target_node = node_on_path(pathid, level);
     for (const auto& block : stash_) {
       if (selected.size() < Z_ && block.valid) {
-        size_t block_node = node_on_path(position_map_[block.id], level);
+        size_t block_node = node_on_path(position_map_[block.block_id], level);
         if (block_node == target_node) {
           selected.push_back(block);
           continue;
