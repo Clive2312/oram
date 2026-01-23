@@ -82,7 +82,7 @@ void run_encrypted_oram_basic() {
     reference[op.pos] = op.val;
 
     auto access_op = encrypted.access(op.pos, op.val);
-    int actual_old = driver.run(std::move(access_op));
+    int actual_old = driver.do_access(std::move(access_op));
 
     expect_equal(actual_old, expected_old, "EncryptedORAM access result");
 
@@ -129,7 +129,7 @@ void run_encrypted_oram_with_naive() {
     reference[op.pos] = op.val;
 
     auto access_op = encrypted.access(op.pos, op.val);
-    int actual_old = driver.run(std::move(access_op));
+    int actual_old = driver.do_access(std::move(access_op));
 
     expect_equal(actual_old, expected_old, "EncryptedORAM+NaiveORAM access result");
   }
@@ -161,11 +161,11 @@ void run_encrypted_oram_size_one() {
   MemoryDriver<int, Bytes> driver(kSize, int_to_bytes(kDefaultValue));
 
   auto op1 = encrypted.access(0, 1);
-  int old1 = driver.run(std::move(op1));
+  int old1 = driver.do_access(std::move(op1));
   expect_equal(old1, kDefaultValue, "EncryptedORAM size=1 first access");
 
   auto op2 = encrypted.access(0, 2);
-  int old2 = driver.run(std::move(op2));
+  int old2 = driver.do_access(std::move(op2));
   expect_equal(old2, 1, "EncryptedORAM size=1 second access");
 
   expect_equal(bytes_to_int(driver.storage()[0]), 2, "EncryptedORAM size=1 final storage");

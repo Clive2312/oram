@@ -25,7 +25,7 @@ ORAM (Oblivious RAM) hides memory access patterns from an adversary who can obse
 │      Driver         │  (MemoryDriver, DiskDriver, etc.)
 │   - read_one()      │  executes actual I/O
 │   - exchange_one()  │
-│   - run()           │  drives the coroutine
+│   - run()           │  schedules submitted coroutines
 └─────────────────────┘
 ```
 
@@ -47,7 +47,7 @@ int main() {
 
     // access(pos, new_value) returns old value and writes new_value
     auto op = oram.access(10, 42);
-    int old_value = driver.run(std::move(op));
+    int old_value = driver.do_access(std::move(op));
     // old_value == 0 (the default), slot 10 now contains 42
 }
 ```
@@ -134,7 +134,7 @@ Operations can specify positions as either:
 
 ### Driver Base Class (`driver.hpp`)
 
-Drivers execute storage operations and drive coroutines to completion:
+Drivers execute storage operations and coordinate coroutines:
 
 ```cpp
 template <class T>
@@ -147,8 +147,11 @@ public:
     // Execute a batch of operations
     virtual AccessResults execute(const AccessReq& req);
 
-    // Run an ORAM access to completion, return final result
-    T run(AccessResult op);
+    // Schedule or run coroutines
+    Token submit(AccessResult op);
+    void run();
+    T wait(Token token);
+    T do_access(AccessResult op);  // Convenience helper (C++ reserves `do`)
 };
 ```
 

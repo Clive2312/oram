@@ -84,6 +84,7 @@ public:
 protected:
 
   typename Base::AccessResult access_impl(size_t pos, T val) override {
+    LOCK_EXCLUSIVE(lock_);
     // Path ID
     uint32_t pathid = position_map_[pos];
     position_map_[pos] = random_path();
@@ -106,6 +107,7 @@ protected:
     }
     (void)STORE_ACCESS(write_ops);
 
+    UNLOCK(lock_);
     co_return old_value;
   }
 
@@ -210,6 +212,7 @@ private:
   std::uniform_int_distribution<uint32_t> dist_;
   std::vector<Block> stash_;
   std::vector<uint32_t> position_map_;
+  OramLock lock_;
 };
 
 #endif // PATH_ORAM_HPP

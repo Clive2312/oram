@@ -54,12 +54,23 @@ protected:
 
     inner_coro.resume();
     while (!inner_coro.done()) {
-      if (inner_coro.has_request()) {
-        auto inner_req = inner_coro.take_request();
-        track_request(inner_req);
+      if (!inner_coro.has_yield()) {
+        inner_coro.resume();
+        continue;
+      }
 
-        auto results = co_yield std::move(inner_req);
+      auto yielded = inner_coro.take_yield();
+      if (auto* inner_req = std::get_if<typename Base::AccessReq>(&yielded)) {
+        track_request(*inner_req);
+
+        auto results = co_yield std::move(*inner_req);
         inner_coro.provide_results(std::move(results));
+      } else if (auto* lock_req = std::get_if<LockReq>(&yielded)) {
+        co_yield *lock_req;
+        inner_coro.resume();
+      } else if (auto* unlock_req = std::get_if<UnlockReq>(&yielded)) {
+        co_yield *unlock_req;
+        inner_coro.resume();
       }
     }
 

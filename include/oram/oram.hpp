@@ -1,6 +1,7 @@
 #ifndef ORAM_HPP
 #define ORAM_HPP
 
+#include "oram_lock.hpp"
 #include <coroutine>
 #include <exception>
 #include <optional>
@@ -40,6 +41,8 @@ public:
   struct AccessResults {
     std::vector<std::optional<std::vector<U>>> results;
   };
+
+  using YieldValue = std::variant<AccessReq, LockReq, UnlockReq>;
 
   static Op read(Positions positions) { return make_read(std::move(positions)); }
   static Op write(Positions positions, std::vector<U> values) {
@@ -93,7 +96,7 @@ public:
   class AccessResult {
   public:
     struct promise_type {
-      std::optional<AccessReq> pending_request;
+      std::optional<YieldValue> pending_yield;
 
       std::optional<AccessResults> pending_results;
       bool waiting_for_results = false;
@@ -130,10 +133,20 @@ public:
         }
       };
 
-      // Yielding a Request returns a unified awaiter.
+      // Yielding a storage request returns an awaiter for results.
       RequestAwaiter yield_value(AccessReq req) noexcept {
-        pending_request = std::move(req);
+        pending_yield = std::move(req);
         return RequestAwaiter{this};
+      }
+
+      std::suspend_always yield_value(LockReq req) noexcept {
+        pending_yield = std::move(req);
+        return {};
+      }
+
+      std::suspend_always yield_value(UnlockReq req) noexcept {
+        pending_yield = std::move(req);
+        return {};
       }
     };
 
@@ -159,16 +172,33 @@ public:
     bool done() const { return !h_ || h_.done(); }
 
     bool has_request() const {
-      return h_ && h_.promise().pending_request.has_value();
+      return h_ && h_.promise().pending_yield.has_value() &&
+             std::holds_alternative<AccessReq>(*h_.promise().pending_yield);
     }
 
     AccessReq take_request() {
       if (!h_) throw std::runtime_error("no coroutine handle");
       auto& p = h_.promise();
-      if (!p.pending_request) throw std::runtime_error("no pending request");
-      auto req = std::move(*p.pending_request);
-      p.pending_request.reset();
+      if (!p.pending_yield) throw std::runtime_error("no pending request");
+      if (!std::holds_alternative<AccessReq>(*p.pending_yield)) {
+        throw std::runtime_error("pending yield is not an AccessReq");
+      }
+      auto req = std::get<AccessReq>(std::move(*p.pending_yield));
+      p.pending_yield.reset();
       return req;
+    }
+
+    bool has_yield() const {
+      return h_ && h_.promise().pending_yield.has_value();
+    }
+
+    YieldValue take_yield() {
+      if (!h_) throw std::runtime_error("no coroutine handle");
+      auto& p = h_.promise();
+      if (!p.pending_yield) throw std::runtime_error("no pending yield");
+      auto out = std::move(*p.pending_yield);
+      p.pending_yield.reset();
+      return out;
     }
 
     // For resuming after satisfying access requests
@@ -248,5 +278,14 @@ public:
 
 #define STORE_ACCESS(ops_or_req) \
   (co_yield this->store_access(ops_or_req))
+
+#define LOCK_READ(lock_obj) \
+  (void)(co_yield LockReq{&(lock_obj), LockMode::Read})
+
+#define LOCK_EXCLUSIVE(lock_obj) \
+  (void)(co_yield LockReq{&(lock_obj), LockMode::Exclusive})
+
+#define UNLOCK(lock_obj) \
+  (void)(co_yield UnlockReq{&(lock_obj)})
 
 #endif // ORAM_HPP
