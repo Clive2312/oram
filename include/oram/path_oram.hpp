@@ -3,9 +3,11 @@
 
 #include "oram.hpp"
 #include <cstdint>
+#include <cstring>
 #include <cmath>
 #include <optional>
 #include <random>
+#include <vector>
 
 // PathORAM: An Extremely Simple Oblivious RAM Protocol by Stefanov et al.
 // O(log(N)) per access
@@ -19,6 +21,42 @@ struct PathORAMBlock {
     if (!valid) return std::nullopt;
     return static_cast<uint32_t>(block_id);
   }
+
+  // Serialization overhead: 8-byte block_id (LE) + 1-byte valid flag.
+  static constexpr size_t kSerializedOverhead = sizeof(uint64_t) + 1;
+
+  // Serialize to bytes: [block_id (8 LE bytes)][valid (1 byte)][data]
+  // Only meaningful for T with .size() and iterators (e.g. std::vector<uint8_t>).
+  std::vector<uint8_t> serialize() const
+      requires requires(const T& d) { d.size(); d.begin(); d.end(); } {
+    std::vector<uint8_t> out;
+    out.reserve(kSerializedOverhead + data.size());
+    uint64_t id_le = static_cast<uint64_t>(block_id);
+    for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+      out.push_back(static_cast<uint8_t>(id_le & 0xFF));
+      id_le >>= 8;
+    }
+    out.push_back(valid ? uint8_t{1} : uint8_t{0});
+    out.insert(out.end(), data.begin(), data.end());
+    return out;
+  }
+
+  // Deserialize from bytes: [block_id (8 LE bytes)][valid (1 byte)][data]
+  static PathORAMBlock deserialize(const std::vector<uint8_t>& bytes)
+      requires requires { T().assign(bytes.begin(), bytes.end()); } {
+    if (bytes.size() < kSerializedOverhead) {
+      throw std::invalid_argument("PathORAMBlock::deserialize: too small");
+    }
+    PathORAMBlock block;
+    uint64_t id_le = 0;
+    for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+      id_le |= static_cast<uint64_t>(bytes[i]) << (i * 8);
+    }
+    block.block_id = static_cast<size_t>(id_le);
+    block.valid = (bytes[sizeof(uint64_t)] != 0);
+    block.data.assign(bytes.begin() + kSerializedOverhead, bytes.end());
+    return block;
+  }
 };
 
 template <class T>
@@ -29,12 +67,14 @@ public:
   using Range = typename Base::Range;
 
   explicit PathORAM(size_t size, size_t Z,
-                    std::optional<uint64_t> seed = std::nullopt)
+                    std::optional<uint64_t> seed = std::nullopt,
+                    size_t stash_max = 0)
       : size_(size),
         Z_(Z),
         height_(compute_height(size)),
         max_path_(compute_max_path(height_)),
         physical_size_(compute_physical_size(max_path_, Z)),
+        stash_max_(stash_max),
         rng_(seed ? *seed : std::random_device{}()),
         dist_(0, static_cast<uint32_t>(max_path_)) {
 
@@ -47,6 +87,36 @@ public:
 
   size_t size() const override { return size_; }
   size_t physical_size() const override { return physical_size_; }
+  size_t max_stash_size() const override { return stash_max_; }
+
+  // Returns block IDs currently in the stash (blocks not placed in the tree).
+  std::vector<uint32_t> leak_stash() const {
+    std::vector<uint32_t> ids;
+    for (const auto& block : stash_) {
+      if (block.valid) {
+        ids.push_back(static_cast<uint32_t>(block.block_id));
+      }
+    }
+    return ids;
+  }
+
+  // Replace stash contents wholesale (used when restoring runtime state).
+  void set_stash(std::vector<Block> entries) {
+    stash_ = std::move(entries);
+  }
+
+  // Replace position map wholesale (used when restoring runtime state).
+  void set_position_map(std::vector<uint32_t> pm) {
+    position_map_ = std::move(pm);
+  }
+
+  // Set the data size for dummy blocks (needed for container types like Bytes).
+  void set_data_size(size_t n) { data_size_ = n; }
+
+  // Return a copy of the current position map.
+  std::vector<uint32_t> leak_position_map() const {
+    return position_map_;
+  }
 
   static size_t flat_index(size_t level, size_t offset) {
     return (static_cast<size_t>(1) << level) - 1 + offset;
@@ -197,9 +267,17 @@ private:
 
   std::vector<Block> fill_bucket(std::vector<Block> selected) const {
     while (selected.size() < Z_) {
-      selected.push_back(Block{size_, T{}, false});
+      selected.push_back(Block{size_, make_dummy_data(), false});
     }
     return selected;
+  }
+
+  T make_dummy_data() const {
+    if constexpr (requires(size_t n) { T(n, typename T::value_type{}); }) {
+      return T(data_size_, typename T::value_type{});
+    } else {
+      return T{};
+    }
   }
 
   const size_t size_;
@@ -207,6 +285,8 @@ private:
   const size_t height_;
   const size_t max_path_;
   const size_t physical_size_;
+  const size_t stash_max_;
+  size_t data_size_ = 0;
 
   std::mt19937_64 rng_;
   std::uniform_int_distribution<uint32_t> dist_;

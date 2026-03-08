@@ -259,6 +259,9 @@ public:
   // physical_size is an upper bound on actual storage needed so drivers
   // can allocate enough untrusted space. Tighter bounds reduce overhead.
   virtual size_t physical_size() const = 0;
+  // Maximum number of blocks that may reside in the ORAM's stash.
+  // Defaults to 0 (no stash). Subclasses like PathORAM override this.
+  virtual size_t max_stash_size() const { return 0; }
 
   // Non-virtual public entrypoint.
   AccessResult access(size_t pos, T val) { return access_impl(pos, std::move(val)); }
